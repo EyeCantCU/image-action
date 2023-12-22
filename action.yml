@@ -1,0 +1,154 @@
+name: 'Image Action'
+author: 'EyeCantCU'
+description: 'Builds, pushes, and signs an image'
+inputs:
+  image:
+    description: 'The name (reference) of the image to build'
+    required: false
+  tags:
+    description: 'The tags of the image to build. For multiple tags, seperate by whitespace. For example, "latest v1".'
+    required: false
+    default: latest
+  labels:
+    description: 'The labels of the image to build. Seperate by newline. For example, "io.containers.capabilities=sys_admin,mknod".'
+    required: false
+  base-image:
+    description: 'The base image to use to create a new container image'
+    required: false
+  containerfiles:
+    description: 'List of Containerfile paths (eg: ./Containerfile)'
+    required: false
+  dockerfiles:
+    description: 'Alias for "containerfiles". "containerfiles" takes precedence if both are set.'
+    required: false
+  context:
+    description: 'Path of the directory to use as context (default: .)'
+    required: false
+    default: '.'
+  content:
+    description: 'List of files/directories to copy inside the base image'
+    required: false
+  entrypoint:
+    description: 'The entry point to set for containers based on image'
+    required: false
+  layers:
+    description: 'Set to true to cache intermediate layers during build process'
+    required: false
+  port:
+    description: 'The port to expose when running containers based on image'
+    required: false
+  workdir:
+    description: 'The working directory to use within the container'
+    required: false
+  envs:
+    description: 'List of environment variables to be set when running containers based on image'
+    required: false
+  build-args:
+    description: 'List of --build-args to pass to buildah'
+    required: false
+  oci:
+    description: 'Set to true to build using the OCI image format instead of the Docker image format'
+    default: 'false'
+    required: false
+  arch:
+    description:
+      'Label the image with this ARCH, instead of defaulting to the host architecture'
+    required: false
+  archs:
+    description: |
+      'Same as input 'arch', use this for multiple architectures.
+      Seperate them by a comma'
+    required: false
+  platform:
+    description: |
+      Label the image with this PLATFORM, instead of defaulting to the host platform.
+      Only supported for containerfile builds.
+    required: false
+  platforms:
+    description: |
+      'Same as input 'platform', use this for multiple platforms.
+      Seperate them by a comma'
+    required: false
+  build-extra-args:
+    description: |
+      Extra args to be passed to buildah bud and buildah from.
+      Separate arguments by newline. Do not use quotes - @actions/exec will do the quoting for you.
+    required: false
+  registry:
+    description: 'Hostname and optional namespace to push the image to (eg. quay.io/username or quay.io)'
+    required: false
+  username:
+    description: 'Username to use as credential to authenticate to the registry'
+    required: false
+  password:
+    description: 'Password to use as credential to authenticate to the registry'
+    required: false
+  tls-verify:
+    description: 'Verify TLS certificates when contacting the registry'
+    required: false
+    default: 'true'
+  digestfile:
+    description: |
+      After copying the image, write the digest of the resulting image to the file.
+      By default, the filename will be determined from the image and tag.
+      The contents of this file are the digest output.
+    required: false
+  push-extra-args:
+    description: |
+      Extra args to be passed to podman push.
+      Separate arguments by newline. Do not use quotes - @actions/exec will do the quoting for you.
+    required: false
+  registry-token:
+    description: 'Password for container registry'
+    required: true
+  signing-secret:
+    description: 'Private key used to sign target container.'
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Build container image
+      uses: redhat-actions/buildah-build@v2
+      with:
+        arch: ${{ inputs.arch }}
+        archs: ${{ inputs.archs }}
+        image: ${{ inputs.image }}
+        tags: ${{ inputs.tags }}
+        labels: ${{ inputs.labels }}
+        workdir: ${{ inputs.workdir }}
+        containerfiles: ${{ inputs.containerfiles }}
+        dockerfiles: ${{ inputs.dockerfiles }}
+        envs: ${{ inputs.envs }}
+        build-args: ${{ inputs.build-args }}
+        context: ${{ inputs.context }}
+        content: ${{ inputs.content }}
+        entrypoint: ${{ inputs.entrypoint }}
+        layers: ${{ inputs.layers }}
+        port: ${{ inputs.port }}
+        oci: ${{ inputs.oci }}
+        tls-verify: ${{ inputs.tls-verify }}
+        platform: ${{ inputs.platform }}
+        platforms: ${{ inputs.platforms }}
+        extra-args: ${{ inputs.build-extra-args }}
+
+    - name: Push to Container Registry
+      uses: redhat-actions/push-to-registry@v2
+      if: (github.event_name != 'pull_request') && inputs.ref == 'refs/heads/main'
+      with:
+        username: ${{ inputs.username }}
+        password: ${{ inputs.password }}
+        image: ${{ steps.build_image.outputs.image }}
+        registry: ${{ inputs.registry }}
+        tags: ${{ steps.build_image.outputs.tags }}
+        digestfile: ${{ inputs.digestfile }}
+        tls-verify: ${{ inputs.tls-verify }}
+        extra-args: ${{ inputs.push-extra-args }}
+
+    - name: Sign image
+      uses: EyeCantCU/cosign-action/sign@v0.1.2
+      if: (github.event_name != 'pull_request') && github.ref == 'refs/heads/main'
+      with:
+        containers: ${{ inputs.registry }}/${{ inputs.image }}
+        tags: ${{ steps.push.outputs.digest }}
+        registry-token: ${{ inputs.registry-token }}
+        signing-secret: ${{ inputs.signing-secret }}
