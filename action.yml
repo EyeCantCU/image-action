@@ -104,9 +104,22 @@ inputs:
   signing-secret:
     description: 'Private key used to sign target container.'
     required: true
+  verify-image:
+    description: 'Base image to verify'
+    required: false
+  verify-pubkey:
+    description: 'Public key used to verify base image'
+    required: false
 runs:
   using: "composite"
   steps:
+    - name: Verify base image
+      uses: EyeCantCU/cosign-action/verify@v0.1.2
+      if: (${{ inputs.verify-image }} != '')
+      with:
+        containers: ${{ inputs.verify-image }}
+        pubkey: ${{ inputs.verify-pubkey }}
+
     - name: Build container image
       uses: redhat-actions/buildah-build@v2
       with:
